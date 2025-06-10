@@ -1,2 +1,9 @@
 package-lock.json
 node_modules/*
+
+services/api/logs/*
+!services/api/logs/index.js
+
+
+services/ws/logs/*
+!services/ws/logs/index.js
