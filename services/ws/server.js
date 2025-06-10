@@ -59,8 +59,12 @@ wss.on('connection', async (ws, req) => {
       const userId = params.get('userId');
       const tokenData = jwt.decode(token);
 
+      console.log('token is ---------', token);
+      console.log('user id is ---------', userId);
+      console.log('token data is -------', tokenData);
+
       if (process.env.LOAD_TESTING !== 'true') {
-        const isCurrentSession = await verifyCurrentWebSocketSession(token, ws._id);
+        const isCurrentSession = await verifyCurrentWebSocketSession(token, ws.id);
 
         console.log('is current session --------------', isCurrentSession);
         if (!token || !userId || !verifyToken(token) || !isCurrentSession) {
@@ -77,11 +81,15 @@ wss.on('connection', async (ws, req) => {
 
       const data = JSON.parse(message);
 
+      console.log('data is ---- line 84 -------', data);
+
       if (rateLimitRequest(ws, data)) {
         return ws.send(JSON.stringify({ e: 'Invalid', msg: 'Too many requests!' }));
       }
 
       let wsData = await redis.get(`${redisDb}-user:${userId}`);
+
+      console.log('ws data is ----------', wsData);
 
       if (!wsData) {
         return ws.send(JSON.stringify({ e: 'Invalid', msg: `Invalid Request! User not found!!` }));
@@ -94,13 +102,17 @@ wss.on('connection', async (ws, req) => {
       if (data.e === 'Bet') {
         let isValid = isValidTwoDecimalNumber(data.a);
         let isValidBtn = isValidTwoDecimalNumber(data.btn);
+        console.log('amount is -----------', data.a);
+        console.log('btn is ------', data.btn);
+        console.log('is valid is ----------', isValid);
+        console.log('isValidBtn is -------', isValidBtn);
 
         if (
           !isValid ||
           !isValidBtn ||
           !data.a ||
           !data.btn ||
-          data.e ||
+          !data.e ||
           !token ||
           !userId ||
           Number(data.btn) < 1 ||
@@ -142,12 +154,15 @@ wss.on('connection', async (ws, req) => {
         }
       }
 
+      // LOGICS ---------------
       if (data.e === 'Bet' && !gameRunning) {
+        console.log('line 160 is --------------');
         // game is not running and someone place the bet
         const betId = generateRandomId(4, 5);
 
         const newBet = { id: betId, bet: data.a, btn: data.btn };
 
+        console.log('new bet is --------', newBet);
         const roomHash = `{room-${gameCount}}`;
         const playerBetsKey = `${redisDb}:${roomHash}-player`;
         const betDetailKey = `${redisDb}:${roomHash}`;
@@ -202,6 +217,8 @@ wss.on('connection', async (ws, req) => {
       } else if (data.e === 'Cashout' && gameRunning) {
         const userField = `${userId}_${data.id}`;
         const multiplier = calculateMultiplier(startTime, Date.now());
+
+        console.log('multiplier ------------');
 
         const roomHash = `{room-${gameCount}}`;
         const betKey = `${redisDb}:${roomHash}`;
@@ -281,6 +298,9 @@ wss.on('connection', async (ws, req) => {
           betStr,
           data.btn.toString()
         );
+
+        console.log('status is -------------', status);
+        console.log('msg is -------------', msg);
 
         if (status !== 1) {
           return ws.send(JSON.stringify({ e: 'Invalid', msg }));
@@ -430,28 +450,33 @@ wss.on('connection', async (ws, req) => {
     // main logic
     const wsId = uuid.v4();
     ws.id = wsId;
-    let session = null;
+    console.log('wsID is ----------', wsId);
+    let session = await verifySingleSession(userId, token, wsId);
+    console.log('session is --------', session);
+    let verification = verifyToken(token);
+    console.log('verification  is ------', verification);
 
-    if (!token || !userId || !verifyToken(token) || !(session = await verifySingleSession(userId, token, wsId))) {
+    if (!token || !userId || !verifyToken(token) || !session) {
       // console.log(token, userId, wsId)
+
+      console.log('coming here -----------');
       ws.send(JSON.stringify({ e: 'ERROR', msg: `token is invalid or previous session is opened!` }));
       return ws.terminate();
     }
-    if (session.c === false || session.c === 'false') {
+
+    console.log('session is -----------', session);
+
+    //! Un comment it later --------
+    const isValidCurrencyCheck = session.c === false || session.c === 'false';
+    if (isValidCurrencyCheck) {
       return ws.send(JSON.stringify({ e: 'ERROR', msg: `Currency is Invalid!` }));
     }
-    // console.log('SESSION::: > ', session);
+    const { t, ...sessionWithoutToken } = session;
+
     ws.send(
       JSON.stringify({
         e: 'User',
-        u: session.u,
-        b: session.b,
-        l: session.l,
-        c: session.c,
-        range: session.range,
-        buttons: session.buttons,
-        defaultBet: session.defaultBet,
-        multiplier: session.multiplier,
+        ...sessionWithoutToken,
       })
     );
   } else {
@@ -464,6 +489,7 @@ wss.on('connection', async (ws, req) => {
     ws.send(JSON.stringify({ e: 'User', u: 'test_user', b: '997.25' }));
   }
 
+  console.log('line 473 ----------------');
   await checkPreviousBets(ws, userId, gameCount, gameRunning);
 
   if (gameRunning) {

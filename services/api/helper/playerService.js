@@ -2,9 +2,11 @@ const Player = require('../models/playerModel');
 const { saveToMaster } = require('../controllers/masterController');
 const jwt = require('jsonwebtoken');
 
-const { hasDateChanged } = require('../../utils/common');
+const { redisClient: redis, redisDb } = require('../../DB/redis');
+const { hasDateChanged, isValidCurrencyProxy, CurrencyAPI } = require('../../utils/common');
 
 const { dbLog } = require('../logs/index');
+
 const gameLaunch = async (payload, playerInfo) => {
   console.log('hi ---------I am helper for player service---------');
   const playerInstance = await Player(process.env.DbName + `-${payload?.consumerId}`);
@@ -15,16 +17,92 @@ const gameLaunch = async (payload, playerInfo) => {
     })
     .lean();
 
+  console.log('player is ----------', player);
   dbLog(`GET, req: GAME_LAUNCH, data: ${JSON.stringify(player)}`);
 
+  if (process.env.BYPASS_AUTHENTICATE_SIGNATURE_FOR_TESTING != 'true') {
+    if (headerSignature !== signature) {
+      return {
+        errorCode: 401,
+        errorMessage: 'Unauthorized',
+      };
+    }
+  }
   logger.info(`Player found is ---------------`, JSON.stringify(player));
 
+  let responseData = null;
   if (!player) {
     logger.info(`Registering the player ---------------------`);
-    return await registerPlayer(payload, playerInfo, playerInstance);
+    responseData = await registerPlayer(payload, playerInfo, playerInstance);
   }
   logger.info(`Login the player -----------`);
-  return await updatePlayer(payload, playerInfo, playerInstance, player);
+
+  responseData = await updatePlayer(payload, playerInfo, playerInstance, player);
+
+  console.log('respnose iata is --------', responseData);
+
+  let checkValidCurrency,
+    isCurrencyValid = true;
+  if (!responseData.hasOwnProperty('errorCode')) {
+    const params = new URLSearchParams(responseData.url.split('?')[1]);
+    const userId = params.get('userId');
+    const token = params.get('token');
+
+    console.log('userId ----------', userId);
+    console.log('token is ---------', token);
+
+    let wsData = await redis.get(`${redisDb}-user:${userId}`);
+
+    console.log('ws data is -----------', wsData);
+    if (wsData) {
+      wsData = JSON.parse(wsData);
+      await redis.del(`${redisDb}-token:${wsData.t}`);
+    }
+
+    console.log('player is line 62 ----------------', player);
+    if (process.env.CHECK_VALID_CURRENCY_ON_LOGIN === 'true') {
+      checkValidCurrency = await isValidCurrencyProxy(player.currency);
+      console.log('check valid currency -----------', checkValidCurrency);
+
+      if (!checkValidCurrency.isValid) {
+        isCurrencyValid = false;
+      }
+    }
+
+    const getCurrencyData = await CurrencyAPI(player.currency);
+    let count = await redis.lrange(`${redisDb}:Multiplier`, 0, -1);
+
+    console.log('currency data is -----------', getCurrencyData);
+    console.log('count is ------------', count);
+
+    if (count.length > 100) {
+      await redis.ltrim(`${redisDb}:Multiplier`, 50, -1);
+    }
+
+    const multiplierData = await redis.lrange(`${redisDb}:Multiplier`, -30, -1);
+    console.log('multiplier data is ----------------', multiplierData);
+    const userData = JSON.stringify({
+      u: userId,
+      b: player.balance,
+      t: token,
+      c: isCurrencyValid,
+      range: getCurrencyData.range,
+      buttons: getCurrencyData.buttons,
+      defaultBet: getCurrencyData.defaultBet,
+      multiplier: multiplierData.reverse(),
+    });
+
+    await redis.set(`${redisDb}-user:${userId}`, userData, 'EX', 3600);
+
+    if (process.env.BYPASS_AUTHENTICATE_SIGNATURE_FOR_TESTING != 'true') {
+      if (!checkValidCurrency.isValid) {
+        return { status: 'ERROR', message: 'Currency is invalid!' };
+      }
+    }
+    console.log('user data is --------', userData);
+
+    return responseData;
+  }
 };
 
 const registerPlayer = async (payload, playerInfo, playerInstance) => {
@@ -60,7 +138,8 @@ const registerPlayer = async (payload, playerInfo, playerInstance) => {
       userId: savedPlayer._id,
       providerName: payload?.consumerId,
     },
-    process.env.JWT_SECRET_KEY
+    process.env.JWT_SECRET_KEY,
+    { expiresIn: '1h' }
   );
 
   await playerInstance.findOneAndUpdate({ _id: savedPlayer._id }, { $set: { token: token } }, { new: true }).lean();
@@ -77,7 +156,6 @@ const registerPlayer = async (payload, playerInfo, playerInstance) => {
 };
 const updatePlayer = async (payload, playerInfo, playerInstance, existingPlayer) => {
   const token = jwt.sign({ userId: existingPlayer._id, providerName: payload?.consumerId }, process.env.JWT_SECRET_KEY);
-  console.log('token is -----------', token);
   let currentDateAndTime = Math.floor(new Date().getTime() / 1000);
 
   let isDateChanged = hasDateChanged(currentDateAndTime, existingPlayer.updatedAt);

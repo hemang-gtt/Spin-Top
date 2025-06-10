@@ -135,7 +135,7 @@ const startGame = async () => {
         }
 
         console.log('time to start the plain again -----------------');
-        startNewGameIn(10);
+        startNewGameIn(20);
       }
 
       // ! use for status of web socket --------

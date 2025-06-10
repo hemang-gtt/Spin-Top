@@ -13,18 +13,21 @@ const postReq = async (
 ) => {
   logger.info(`Calling ${requestType} api:::::::::::::::::::::::::::::::::::::::::`);
 
+  console.log('player is ----------', player);
+  console.log('data is -0---------', data);
   let headers = {
     'Content-Type': 'application/json',
     'X-Hub-Consumer': player.consumerId,
   };
+  console.log('headers -------------', headers);
   let url = process.env.API_BASE_URL + requestType;
 
   console.log('url is -------------', url);
-  console.log('data is ---------------', data);
   try {
     let response = await axios.post(url, data, { headers, timeout });
     return response.data;
   } catch (error) {
+    console.log('----------error is -------', error);
     if (error?.response?.data?.code === 'invalid.session.key') {
       let finalError = {
         status: error?.response?.data?.code,

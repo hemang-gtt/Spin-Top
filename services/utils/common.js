@@ -56,13 +56,11 @@ const getTokenDetails = (urlToken) => {
 
 const isValidCurrencyProxy = async (currency) => {
   try {
-    // "en"
     let finalURL = process.env.CURRENCY_URL + `/is-valid-currency/${currency}`;
-    const headers = { info: process.env.DbName };
-    let response = await axios.get(finalURL, { headers, timeout: 10000 });
-    return { status: 'SUCCESS', ...response.data };
+    const headers = { info: process.env.DB_NAME };
+    let resp = await axios.get(finalURL, { headers, timeout: 10000 });
+    return { status: 'SUCCESS', ...resp.data };
   } catch (error) {
-    console.log('error is ----', error);
     return {
       status: 'ERROR',
       currency: currency,
@@ -165,6 +163,8 @@ const verifyToken = (token) => {
 };
 
 const verifyCurrentWebSocketSession = async (token, wsId) => {
+  console.log('token is ----------', token);
+  console.log('ws id is ----------', wsId);
   let uuid = await redis.get(`${redisDb}-token:${token}`);
   if (uuid && uuid === wsId) {
     return true;
@@ -172,6 +172,7 @@ const verifyCurrentWebSocketSession = async (token, wsId) => {
   return false;
 };
 const isValidTwoDecimalNumber = (input) => {
+  console.log('input is -------------', input);
   const regex = /^\d+(\.\d{1,2})?$/;
   if (typeof input !== 'string' && typeof input !== 'number') {
     return false;

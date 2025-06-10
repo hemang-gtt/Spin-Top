@@ -1,5 +1,5 @@
 const { logError } = require('../logs/index');
-const { redisClient: redis, redisDB } = require('../../DB/redis');
+const { redisClient: redis, redisDb } = require('../../DB/redis');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
 
@@ -29,10 +29,14 @@ const luaScript = `
 
 const checkAndSetBalance = async (ws, userId, amount, event) => {
   try {
-    const redisKey = `${redisDB}-user:${userId}`;
+    const redisKey = `${redisDb}-user:${userId}`;
     amount = parseFloat(amount);
 
+    console.log('amount is -----------', amount);
+
     const result = await redis.eval(luaScript, 1, redisKey, amount, event);
+
+    console.log('result is -----------', result);
 
     if (result === 'ERROR_SESSION_EXPIRED') {
       ws.send(JSON.stringify({ e: 'ERROR', msg: 'Session expired!' }));
@@ -43,7 +47,7 @@ const checkAndSetBalance = async (ws, userId, amount, event) => {
       return { status: 'ERROR' };
     }
 
-    console.log(`BALANCE UPDATED: ${result}`);
+    console.log(`BALANCE UPDATED::::::::::::::::::: ${result}`);
     return { status: 'SUCCESS', balance: parseFloat(result) }; // Convert string back to float
   } catch (error) {
     logError(error);
@@ -53,17 +57,22 @@ const checkAndSetBalance = async (ws, userId, amount, event) => {
 
 const checkPreviousBets = async (ws, userId, gameCount, gameRunning) => {
   try {
+    console.log('user id is -----------', userId);
+    console.log('game count is ------------', gameCount);
+    console.log('game running is ----------', gameRunning);
     console.log('gameCount: ' + gameCount);
     let response = [];
     // check in current game and than in next game
-    let userBets = await redis.hget(`${redisDB}:room-${gameCount}-player`, userId);
-    let userBetsNextRound = await redis.hget(`${redisDB}:room-${gameCount + 1}-player`, userId);
+    let userBets = await redis.hget(`${redisDb}:room-${gameCount}-player`, userId);
+    let userBetsNextRound = await redis.hget(`${redisDb}:room-${gameCount + 1}-player`, userId);
+
+    console.log('user bets are --------', userBets);
 
     if (userBets) {
       userBets = JSON.parse(userBets);
       let betArr = [];
       userBets.forEach((bet) => betArr.push(`${userId}_${bet.id}`));
-      let cashouts = await redis.hmget(`${redisDB}:room-${gameCount}-cashout`, betArr);
+      let cashouts = await redis.hmget(`${redisDb}:room-${gameCount}-cashout`, betArr);
       for (let i = 0; i < cashouts.length; i++) {
         if (cashouts[i] === null) {
           response.push({ betId: userBets[i].id, betAmount: userBets[i].bet, btn: userBets[i].btn });
@@ -116,21 +125,28 @@ const checkPreviousBets = async (ws, userId, gameCount, gameRunning) => {
 
     return { status: 'SUCCESS' };
   } catch (error) {
+    console.log('error is ------------', error);
     logError(error);
     return { status: 'ERROR' };
   }
 };
 
-// ! will check the internal API url call
+// ! will check the internal API url call why it's name is verify single session ?
 const verifySingleSession = async (userId, token, wsId) => {
   try {
-    let wsData = await redis.get(`${redisDB}-user:${userId}`);
+    console.log('redis db is ----------', redisDb, wsId);
+    let wsData = await redis.get(`${redisDb}-user:${userId}`);
+
+    console.log('line 135 ----------------');
+
+    // fetch the consumer id using token -----
     // console.log(JSON.parse(wsData), 'FirstData', token);
 
     if (wsData && JSON.parse(wsData).t === token) {
       wsData = JSON.parse(wsData);
-      // console.log(wsData, 'IN IF BLOCK')
 
+      console.log('ws data going is ------------', wsData);
+      console.log('userID is --------', userId, token);
       let json = await axios.post(
         `${process.env.INTERNAL_API_URL}`,
         { userId: userId, token: token },
@@ -141,7 +157,7 @@ const verifySingleSession = async (userId, token, wsId) => {
           },
         }
       );
-      // console.log('JSON', json.data);
+      console.log('data came from api micro service is ---', json.data);
       wsData.multiplier = json.data.multiplier;
 
       if (Number(json.data.balance) !== wsData.b) {
@@ -153,17 +169,19 @@ const verifySingleSession = async (userId, token, wsId) => {
         wsData.buttons = json.data.buttons;
         wsData.defaultBet = json.data.defaultBet;
 
-        await redis.set(`${redisDB}-user:${userId}`, JSON.stringify(wsData), 'EX', 3600);
+        await redis.set(`${redisDb}-user:${userId}`, JSON.stringify(wsData), 'EX', 3600);
       }
 
-      let userExists = await redis.get(`${redisDB}-token:${token}`);
-      // console.log("userExist: " + userExists);
+      let userExists = await redis.get(`${redisDb}-token:${token}`);
+
+      console.log('id is -----------------', wsId);
+      console.log('userExist: ' + userExists);
       if (!userExists) {
-        await redis.set(`${redisDB}-token:${token}`, wsId, 'EX', 3600);
+        await redis.set(`${redisDb}-token:${token}`, wsId, 'EX', 3600);
         return wsData;
       } else if (userExists !== null) {
-        await redis.del(`${redisDB}-token:${token}`);
-        await redis.set(`${redisDB}-token:${token}`, wsId, 'EX', 3600);
+        await redis.del(`${redisDb}-token:${token}`);
+        await redis.set(`${redisDb}-token:${token}`, wsId, 'EX', 3600);
         return wsData;
       }
     }
