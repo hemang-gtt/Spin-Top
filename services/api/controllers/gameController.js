@@ -1,4 +1,5 @@
 const Player = require('../models/playerModel');
+const Game = require('../models/gameModel');
 const { postReq } = require('../api');
 const { isValidCurrencyProxy, CurrencyAPI } = require('../../utils/common');
 
@@ -53,4 +54,37 @@ const getWalletBalance = async (id, clientId) => {
   return response;
 };
 
-module.exports = { getWalletBalance };
+const saveAtStart = async (gameCount, startTime, totalUsers, totalBet) => {
+  console.log('inside the game stated data is getting save---');
+
+  console.log('game count is ------', gameCount);
+  const GameInstance = await Game(`${process.env.DbName}-${process.env.CONSUMER_ID}`);
+
+  const gameData = { gameCount: gameCount, totalUsers: totalUsers, totalBet: totalBet, startTime: startTime };
+  console.log('game data going to save in game collection---', gameData);
+  const newGame = new GameInstance(gameData);
+  const savedGame = await newGame.save();
+  return {
+    status: 'SUCCESS',
+    id: savedGame._id,
+  };
+};
+
+const saveAtCrash = async (gameId, endTime, totalWin, multiplier) => {
+  console.log('hi --------going to save the game data at crash');
+
+  let data = {
+    endTime: endTime,
+    totalWin: totalWin,
+    multiplier: multiplier,
+  };
+  const GameInstance = await Game(`${process.env.DbName}-${process.env.CONSUMER_ID}`);
+  console.log('game data going to save after crash in game collection---', data);
+  const savedGame = await GameInstance.findByIdAndUpdate({ _id: gameId }, { $set: data });
+
+  console.log('saved game is -------------', savedGame);
+
+  return { status: 'SUCCESS' };
+};
+
+module.exports = { getWalletBalance, saveAtStart, saveAtCrash };

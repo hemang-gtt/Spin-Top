@@ -29,6 +29,7 @@ const luaScript = `
 
 const checkAndSetBalance = async (ws, userId, amount, event) => {
   try {
+    console.log('inside lua script checking and setting the balance --------');
     const redisKey = `${redisDb}-user:${userId}`;
     amount = parseFloat(amount);
 
@@ -57,10 +58,7 @@ const checkAndSetBalance = async (ws, userId, amount, event) => {
 
 const checkPreviousBets = async (ws, userId, gameCount, gameRunning) => {
   try {
-    console.log('user id is -----------', userId);
-    console.log('game count is ------------', gameCount);
-    console.log('game running is ----------', gameRunning);
-    console.log('gameCount: ' + gameCount);
+    console.log('gameCount::::::::::::: ' + gameCount);
     let response = [];
     // check in current game and than in next game
     let userBets = await redis.hget(`${redisDb}:room-${gameCount}-player`, userId);
@@ -147,8 +145,17 @@ const verifySingleSession = async (userId, token, wsId) => {
 
       console.log('ws data going is ------------', wsData);
       console.log('userID is --------', userId, token);
+      const basePath = process.env.BASE_PATH;
+      let url;
+      if (basePath === '') {
+        url = `${process.env.INTERNAL_API_URL}/${process.env.BASE_PATH}getBalance`;
+      } else {
+        url = `${process.env.INTERNAL_API_URL}/${process.env.BASE_PATH}/getBalance`;
+      }
+
+      console.log('url is -----------', url);
       let json = await axios.post(
-        `${process.env.INTERNAL_API_URL}`,
+        url,
         { userId: userId, token: token },
         {
           headers: {

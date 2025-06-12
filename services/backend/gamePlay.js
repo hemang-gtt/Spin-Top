@@ -38,7 +38,8 @@ const startGame = async () => {
 
   console.log('game count line 38 is -------------------', gameCount);
 
-  randomNumber = generateCrashPoint();
+  // randomNumber = generateCrashPoint();
+  randomNumber = 3;
 
   console.log(`Random number generated is -------------${randomNumber}`);
 
@@ -57,8 +58,22 @@ const startGame = async () => {
   await redis.publish(channel, JSON.stringify(startEvent));
   console.log('Room:----(game number --> ) ' + gameCount + ', Round Ends at ' + randomNumber);
 
-  // !Call your microservice API handler
-  // await axios.post(url, data, {content, headers});
+  const basePath = process.env.BASE_PATH;
+  // !Call your microservice API handler of on start event
+  let url;
+  if (basePath === '') {
+    url = `${process.env.INTERNAL_API_URL}/${process.env.BASE_PATH}webHook`;
+  } else {
+    url = `${process.env.INTERNAL_API_URL}/${process.env.BASE_PATH}/webHook`;
+  }
+  console.log('url is -------', url, startEvent);
+  console.log('internal api header token ------------', process.env.INTERNAL_API_HEADER_TOKEN);
+  await axios.post(url, startEvent, {
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.INTERNAL_API_HEADER_TOKEN}`,
+    },
+  });
 
   // add dummy users
 
@@ -81,10 +96,12 @@ const startGame = async () => {
   let cashOutUsers;
 
   // trigger this event after 100ms
-  gameInterval = setInterval(() => {
+  gameInterval = setInterval(async () => {
     try {
       ping += 1;
       multiplier = calculateMultiplier(Date.now());
+
+      console.log('multiplier now -----------------', multiplier, randomNumber);
 
       if (multiplier + 0.1 <= randomNumber) {
         // finding all the user who cashed out ------------- // ! How are we handling there win  for the users who cashout -----
@@ -100,7 +117,7 @@ const startGame = async () => {
           e: 'OnCrash',
           f: randomNumber.toFixed(2).toString(),
           ts: Date.now().toString(),
-          l: (gameCount + 1).toString(),
+          l: (gameCount + 1).toString(), // ! creating issue
         };
         // !Publishing the msg of on crash
         redis.publish(channel, JSON.stringify(onCrashEvent));
@@ -121,7 +138,16 @@ const startGame = async () => {
 
         // ! call microservice api for win
 
-        // axios.post(url, data, {headers, content})
+        axios.post(
+          url,
+          { e: 'OnCrash', ts: Date.now().toString(), l: gameCount.toString(), m: multiplier },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${process.env.INTERNAL_API_HEADER_TOKEN}`,
+            },
+          }
+        );
 
         redis.rpush(`${redisDb}:Multiplier`, randomNumber);
         redis.hset(`${redisDb}:Game`, 'Count', gameCount + 1, 'isGameRunning', false);
@@ -135,7 +161,7 @@ const startGame = async () => {
         }
 
         console.log('time to start the plain again -----------------');
-        startNewGameIn(20);
+        startNewGameIn(10);
       }
 
       // ! use for status of web socket --------

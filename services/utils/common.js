@@ -199,11 +199,11 @@ const isValidBetId = (input) => {
   return /^[0-9a-zA-Z]+$/.test(input);
 };
 
-const calculateMultiplier = (endTime) => {
+const calculateMultiplier = (startTime, endTime) => {
   let growthRate = 0.1;
   const elapsed = (endTime - startTime) / 1000; // Elapsed time in seconds
   const multiplier = 1.0 * Math.exp(growthRate * elapsed); // Exponential growth
-  return parseFloat(multiplier.toFixed(2)); // Limit to 2 decimal places
+  return multiplier.toFixed(2); // Limit to 2 decimal places
 };
 module.exports = {
   getTodayDateTime,

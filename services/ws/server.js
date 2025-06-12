@@ -44,7 +44,7 @@ wss.on('connection', async (ws, req) => {
   console.log('ws line 25 i ----------');
   // we will listen all the emitted properties from ws ----
   ws.on('message', async (message) => {
-    console.log('listening the message ---------------------');
+    console.log('listening the message --------line 47-------------', message);
     try {
       if (pingException) {
         return ws.send(
@@ -139,6 +139,9 @@ wss.on('connection', async (ws, req) => {
       } else if (data.e === 'Cashout' || data.e === 'CancelBet') {
         let isValid = isValidBetId(data.id);
         let isValidBtn = isValidTwoDecimalNumber(data.btn);
+
+        console.log('is valid is - and valid btn --', isValid, isValidBtn);
+        console.log('data is ----------', data);
         if (
           !isValid ||
           !isValidBtn ||
@@ -154,9 +157,11 @@ wss.on('connection', async (ws, req) => {
         }
       }
 
+      console.log('line 160 --------------');
+
       // LOGICS ---------------
       if (data.e === 'Bet' && !gameRunning) {
-        console.log('line 160 is --------------');
+        console.log('line 164 is --------------');
         // game is not running and someone place the bet
         const betId = generateRandomId(4, 5);
 
@@ -166,6 +171,7 @@ wss.on('connection', async (ws, req) => {
         const roomHash = `{room-${gameCount}}`;
         const playerBetsKey = `${redisDb}:${roomHash}-player`;
         const betDetailKey = `${redisDb}:${roomHash}`;
+
         const luaResult = await redis.eval(
           atomicBetValidationScriptForCurrentRound,
           1,
@@ -173,6 +179,8 @@ wss.on('connection', async (ws, req) => {
           userId,
           JSON.stringify(newBet)
         );
+
+        console.log('lua result is ---------', luaResult);
 
         if (luaResult === 'MAX_BETS') {
           return ws.send(JSON.stringify({ e: 'Invalid', msg: 'Invalid Request' }));
@@ -182,25 +190,27 @@ wss.on('connection', async (ws, req) => {
           return ws.send(JSON.stringify({ e: 'Invalid', msg: `Invalid Request! Same Id not allowed.` }));
         }
 
+        console.log('redis key --------------', betDetailKey);
         await redis.hset(
           betDetailKey,
           `${userId}_${betId}`,
           JSON.stringify({ a: data.a, api: 'PENDING', operatorId: tokenData.operatorId })
         );
+
         console.log(`Player placed a bet: ${data.a}`);
-
-        let response = {
-          e: 'BetPlaced',
-          id: betId,
-          b: updatedBalance.balance,
-          a: data.a,
-          btn: data.btn,
-          msg: `bet is Placed of amount ${data.a}`,
-        };
-
         if (process.env.LOAD_TESTING !== true) {
           const updatedBalance = await checkAndSetBalance(ws, userId, data.a, 'Bet');
+          if (updatedBalance.status !== 'SUCCESS') return;
 
+          console.log('updated balance is ----------', updatedBalance);
+          let response = {
+            e: 'BetPlaced',
+            id: betId,
+            b: updatedBalance.balance,
+            a: data.a,
+            btn: data.btn,
+            msg: `bet is Placed of amount ${data.a}`,
+          };
           infoLog({
             e: 'BetPlaced',
             id: betId,
@@ -210,19 +220,32 @@ wss.on('connection', async (ws, req) => {
             msg: `bet is placed of amount ${data.a}`,
           });
 
-          return ws.send(JSON.stringify(response));
-        } else {
+          console.log('line 223 ---------', response);
           return ws.send(JSON.stringify(response));
         }
+        return ws.send(
+          JSON.stringify({
+            e: 'BetPlaced',
+            id: betId,
+            a: data.a,
+            btn: data.btn,
+            msg: `bet is Placed of amount ${data.a}`,
+          })
+        );
       } else if (data.e === 'Cashout' && gameRunning) {
+        console.log('cashout got called -----------', data);
         const userField = `${userId}_${data.id}`;
+        console.log('start time is -------', startTime);
         const multiplier = calculateMultiplier(startTime, Date.now());
+        console.log('user field ------------', userField);
 
-        console.log('multiplier ------------');
+        console.log('multiplier ------------', multiplier);
 
         const roomHash = `{room-${gameCount}}`;
         const betKey = `${redisDb}:${roomHash}`;
+        console.log('redis key is -----', betKey);
         const cashoutKey = `${redisDb}:${roomHash}-cashout`;
+        console.log('cashout key is ----------', cashoutKey);
         const [status, luaMultiplier, luaBetAmountOrMsg] = await redis.eval(
           atomicCashoutScript,
           2,
@@ -276,6 +299,7 @@ wss.on('connection', async (ws, req) => {
           );
         }
       } else if (data.e === 'Bet') {
+        console.log('game is running now some one placing the bet:::::');
         const roomHash = `{room-${gameCount + 1}}`;
         const userKey = `${redisDb}:${roomHash}-player`;
         const betDetailKey = `${redisDb}:${roomHash}`;
@@ -413,6 +437,7 @@ wss.on('connection', async (ws, req) => {
       const uuid = await redis.get(`${redisDb}-token:${token}`);
 
       if (uuid === ws.id) {
+        console.log('deleting the token ---------', `${redisDb}-token:${token}`);
         await redis.del(`${redisDb}-token:${token}`);
       }
 
@@ -421,6 +446,7 @@ wss.on('connection', async (ws, req) => {
   });
 
   ws.on('error', (error) => {
+    console.log('some error came=---------------');
     console.log(`Error: ` + error);
   });
 
@@ -466,12 +492,12 @@ wss.on('connection', async (ws, req) => {
 
     console.log('session is -----------', session);
 
-    //! Un comment it later --------
     const isValidCurrencyCheck = session.c === false || session.c === 'false';
     if (isValidCurrencyCheck) {
       return ws.send(JSON.stringify({ e: 'ERROR', msg: `Currency is Invalid!` }));
     }
     const { t, ...sessionWithoutToken } = session;
+    console.log('session without token ------------', sessionWithoutToken);
 
     ws.send(
       JSON.stringify({
@@ -531,13 +557,18 @@ server.listen(port, async () => {
         pingException = false;
         ping = true; // setting that ping is true
         let data;
+
         if (message.e === 'OnStart') {
+          console.log('message is ------------', message);
           gameRunning = true;
           startTime = Number(message.ts);
           gameCount = Number(message.l);
 
+          console.log('start time line 555 is ---------', startTime);
+
           data = { e: message.e, ts: message.ts, l: message.l };
-        } else if (message.e === 'On Crash') {
+        } else if (message.e === 'OnCrash') {
+          console.log('message is --------------', message);
           gameRunning = false;
           gameCount = Number(message.l);
           data = {
@@ -545,12 +576,17 @@ server.listen(port, async () => {
             ts: message.ts,
             f: message.f,
           };
+
+          console.log('data is -----------', data);
         }
 
         if (message.e === 'OnStart' || message.e === 'OnCrash') {
           // send the data to all the clients which are connected by server
+
+          console.log('data getting published to all clients -------', data);
           wss.clients.forEach((client) => {
             if (client.readyState === WebSocket.OPEN) {
+              console.log('web socket is -open -----------');
               client.send(JSON.stringify(data));
             }
           });

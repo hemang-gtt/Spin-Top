@@ -1,6 +1,7 @@
 const axios = require('axios');
 // const { startCron } = require('./cron');
-// const { saveToPending } = require('./controllers/pendingController');
+const { saveToPending } = require('./controllers/pendingController');
+const { startCron } = require('./cron');
 const retries = 1;
 const postReq = async (
   player,
@@ -14,7 +15,7 @@ const postReq = async (
   logger.info(`Calling ${requestType} api:::::::::::::::::::::::::::::::::::::::::`);
 
   console.log('player is ----------', player);
-  console.log('data is -0---------', data);
+  console.log('data is ----------', data);
   let headers = {
     'Content-Type': 'application/json',
     'X-Hub-Consumer': player.consumerId,
@@ -24,6 +25,17 @@ const postReq = async (
 
   console.log('url is -------------', url);
   try {
+    // if (requestType === 'win') {
+    //   let error = {
+    //     response: {
+    //       data: {
+    //         code: 'Invalid.bet',
+    //         message: `failing ${requestType} api`,
+    //       },
+    //     },
+    //   };
+    //   throw error;
+    // }
     let response = await axios.post(url, data, { headers, timeout });
     return response.data;
   } catch (error) {
@@ -46,25 +58,25 @@ const postReq = async (
     }
     if (maxRetries <= 0) {
       logger.info(`Max retries -----------${maxRetries}`);
-      //   if (requestType === 'win' || requestType === 'cancel' || requestType == 'campaignWin') {
-      //     let newData = {
-      //       ...data,
-      //       consumerId: player?.consumerId,
-      //     };
-      //     logger.info(`Data going to save in the pending collection ${JSON.stringify(newData)}`);
-      //     await saveToPending(newData, requestType, playerId);
-      //     startCron(false);
+      if (requestType === 'win' || requestType === 'cancel') {
+        let newData = {
+          ...data,
+          consumerId: player?.consumerId,
+        };
+        logger.info(`Data going to save in the pending collection ${JSON.stringify(newData)}`);
+        await saveToPending(newData, requestType, playerId);
+        startCron(false);
 
-      //     let res = error?.response?.data;
-      //     if (res.hasOwnProperty('code') && res.hasOwnProperty('message')) {
-      //       throw res;
-      //     } else {
-      //       let errorRes = {
-      //         response: { code: 'error.internal', message: 'Internal Error', at: Date.now() },
-      //       };
-      //       throw errorRes;
-      //     }
-      //   }
+        let res = error?.response?.data;
+        if (res.hasOwnProperty('code') && res.hasOwnProperty('message')) {
+          throw res;
+        } else {
+          let errorRes = {
+            response: { code: 'error.internal', message: 'Internal Error', at: Date.now() },
+          };
+          throw errorRes;
+        }
+      }
     } else {
       // we will call again after some delay ---
       await new Promise((resolve) => {
