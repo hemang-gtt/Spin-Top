@@ -10,7 +10,6 @@ const server = http.createServer(app);
 const port = process.env.BACKEND_PORT;
 
 const { sendReady } = require('./gamePlay');
-console.log('port is -----', port);
 
 let gameCount = 0;
 
@@ -19,7 +18,7 @@ const spinTopReadySeconds = Number(process.env.SPINTOP_READY_SEC);
 const gameStartTimer = process.env.GAME_START_TIMER;
 
 const starter = async (port) => {
-  logger.info(`Server is running---${port}`);
+  logger.info(`Backend Server is running---${port}`);
 
   gameCount = Number(await redis.hget(`${redisDb}:Game`, 'Count'));
   if (!gameCount) {
@@ -29,6 +28,7 @@ const starter = async (port) => {
   }
   // [publish the event name as : redis-db-pubsub   , "e": "PING"]
 
+  logger.info(`Publishing the ping event to ${process.env.REDIS_DB_NAME}-pubsub `);
   redis.publish(`${process.env.REDIS_DB_NAME}-pubsub`, JSON.stringify({ e: 'PING' }));
   if (isSpinTopGame) {
     console.log('sping top ready seconds ----------------', spinTopReadySeconds);

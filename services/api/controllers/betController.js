@@ -24,7 +24,7 @@ const betRequest = async (transactionId, roundId, player, betJson, playerId, gam
 
   try {
     const res = await postReq(player, bet, 'bet', player._id);
-    console.log('respnose is ---------', res);
+    logger.info(`Response after bet API is ----------${JSON.stringify(res)}`);
 
     bet.responseTransactionId = res.processedTxId; // there transaction Id(Eva Platform side)
     bet.responseBalance = res.balance;
@@ -33,20 +33,13 @@ const betRequest = async (transactionId, roundId, player, betJson, playerId, gam
 
     dbLog(`SET, req: BET, playerId: ${player._id}, data: ${JSON.stringify(bet)}`);
 
-    console.log('bet data going to save is ----------', bet);
+    logger.info(`bet data going to save is ----------${JSON.stringify(bet)}`);
     const betInstance = await Bet(process.env.DbName + `-${player?.consumerId}`);
     const newBet = new betInstance(bet);
     const savedBet = await newBet.save();
-
-    console.log('saved bet is --------------', savedBet);
     const playerInstance = await Player(`${process.env.DbName}-${process.env.CONSUMER_ID}`);
-    let playerData = await playerInstance.findOneAndUpdate(
-      { _id: player._id },
-      { $set: { balance: res.balance } },
-      { new: true }
-    );
+    await playerInstance.findOneAndUpdate({ _id: player._id }, { $set: { balance: res.balance } }, { new: true });
     betJson.api = 'SUCCESS';
-    console.log('key is -------------', `${redisDb}:{room-${gameCount}}`);
     await redis.hset(`${redisDb}:{room-${gameCount}}`, `${playerId}_${roundId}`, JSON.stringify(betJson));
 
     return res;
@@ -56,7 +49,6 @@ const betRequest = async (transactionId, roundId, player, betJson, playerId, gam
     betJson.api = 'ERROR';
     await redis.hset(`${redisDb}:{room-${gameCount}}`, `${playerId}_${roundId}`, JSON.stringify(betJson));
 
-    console.log('error is ----------', error);
     logErrorMessage(`BET, ${JSON.stringify(error)}, data: ${JSON.stringify(bet)}`);
 
     if (error?.response?.data?.code === 'locked.player') {
@@ -106,7 +98,7 @@ const cancelRequest = async (player, bet) => {
     refund.balanceDetails = res.balanceDetails;
     refund.txDetails = res.txDetails;
 
-    console.log('refund data going to save in db is ----', refund);
+    logger.info(`refund data going to save in db is ----${refund}`);
     dbLog(`SET, req: Cancel, playerId: ${player._id}, data: ${JSON.stringify(refund)}`);
 
     const refundInstance = await Refund(process.env.DbName + `-${player?.consumerId}`);

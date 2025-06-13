@@ -5,14 +5,11 @@ const { isValidCurrencyProxy, CurrencyAPI } = require('../../utils/common');
 
 const { redisClient: redis, redisDb } = require('../../DB/redis');
 const getWalletBalance = async (id, clientId) => {
-  console.log('id --------------', id);
-  console.log('client id is --------', clientId);
-
   const playerInstance = await Player(`${process.env.DbName}-${clientId}`);
 
   let playerData = await playerInstance.findById(id).lean();
 
-  console.log('player is ------------', playerData);
+  logger.info(`Player data fetched ------------${JSON.stringify(playerData)}`);
   let data = { sessionToken: playerData.sessionToken };
 
   const res = await postReq({ consumerId: clientId }, data, 'playerInfo', '');
@@ -21,11 +18,9 @@ const getWalletBalance = async (id, clientId) => {
   let checkValidCurrency,
     isCurrencyValid = false;
   if (process.env.CHECK_VALID_CURRENCY_ON_LOGIN === 'true') {
-    console.log('line 26- -------------');
     checkValidCurrency = await isValidCurrencyProxy(playerData.currency);
-    console.log('checkValidCurrency :::> ', JSON.stringify(checkValidCurrency));
 
-    console.log('currency is ----------', checkValidCurrency.isValid, typeof checkValidCurrency.isValid);
+    logger.info(`check valid currency is ----------${JSON.stringify(checkValidCurrency)}`);
     if (checkValidCurrency.isValid === true) {
       isCurrencyValid = true;
     }
@@ -33,10 +28,9 @@ const getWalletBalance = async (id, clientId) => {
 
   const getCurrencyData = await CurrencyAPI(playerData.currency);
 
-  console.log('get currency data is -------', getCurrencyData);
+  logger.info(`currency data fetched --------${getCurrencyData}`);
 
   const multiplierData = await redis.lrange(`${redisDb}:Multiplier`, -30, -1);
-  console.log('multiplier data is ---------------', multiplierData);
 
   let response = {
     status: 'SUCCESS',
@@ -55,13 +49,13 @@ const getWalletBalance = async (id, clientId) => {
 };
 
 const saveAtStart = async (gameCount, startTime, totalUsers, totalBet) => {
-  console.log('inside the game stated data is getting save---');
+  logger.info(`Data after starting the game --------------getting storee---`);
 
-  console.log('game count is ------', gameCount);
   const GameInstance = await Game(`${process.env.DbName}-${process.env.CONSUMER_ID}`);
 
   const gameData = { gameCount: gameCount, totalUsers: totalUsers, totalBet: totalBet, startTime: startTime };
-  console.log('game data going to save in game collection---', gameData);
+
+  logger.info(`Game data is -----------${JSON.stringify(gameData)}`);
   const newGame = new GameInstance(gameData);
   const savedGame = await newGame.save();
   return {
@@ -71,7 +65,7 @@ const saveAtStart = async (gameCount, startTime, totalUsers, totalBet) => {
 };
 
 const saveAtCrash = async (gameId, endTime, totalWin, multiplier) => {
-  console.log('hi --------going to save the game data at crash');
+  logger.info('hi --------going to save the game data at crash');
 
   let data = {
     endTime: endTime,
@@ -79,10 +73,10 @@ const saveAtCrash = async (gameId, endTime, totalWin, multiplier) => {
     multiplier: multiplier,
   };
   const GameInstance = await Game(`${process.env.DbName}-${process.env.CONSUMER_ID}`);
-  console.log('game data going to save after crash in game collection---', data);
+  logger.info('game data going to save after crash in game collection---', data);
   const savedGame = await GameInstance.findByIdAndUpdate({ _id: gameId }, { $set: data });
 
-  console.log('saved game is -------------', savedGame);
+  logger.info(`Saved game ------------${JSON.stringify(savedGame)}`);
 
   return { status: 'SUCCESS' };
 };

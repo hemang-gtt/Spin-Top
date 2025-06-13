@@ -2,7 +2,7 @@ const { redisClient: redis, redisDb } = require('../DB/redis');
 const axios = require('axios');
 
 const { generateCrashPoint } = require('./Utilites/gameMultiplier');
-const { addDummyUsers, getCashoutAllUsers, getOnStartAllUsers } = require('./Utilites/index');
+const { addDummyUsers, getCashoutAllUsers, getOnStartAllUsers, updateMultiplier } = require('./Utilites/index');
 
 let gameInterval;
 let gameRunning = false;
@@ -36,12 +36,10 @@ const startGame = async () => {
     await redis.hset(`${redisDb}:Game`, 'StartTime', startTime, 'isGameRunning', true, 'Count', gameCount);
   }
 
-  console.log('game count line 38 is -------------------', gameCount);
+  logger.info(`Current game count is ----------${gameCount}`);
 
-  // randomNumber = generateCrashPoint();
-  randomNumber = 3;
-
-  console.log(`Random number generated is -------------${randomNumber}`);
+  randomNumber = generateCrashPoint();
+  // randomNumber = 3;
 
   const startEvent = {
     e: 'OnStart',
@@ -51,23 +49,27 @@ const startGame = async () => {
 
   const channel = `${process.env.REDIS_DB_NAME}-pubsub`;
 
-  console.log(`published event --------${JSON.stringify(startEvent)}----------${channel}`);
+  logger.info(`published on start event --------${JSON.stringify(startEvent)}-----on-----${channel}`);
 
   // redis.publish(channelName, message);  [both should be string because redis does not handle object datatypes]
 
   await redis.publish(channel, JSON.stringify(startEvent));
-  console.log('Room:----(game number --> ) ' + gameCount + ', Round Ends at ' + randomNumber);
+  logger.info(`Room ----------------(game number is -----) + ${gameCount} and round will end at -----${randomNumber}`);
 
   const basePath = process.env.BASE_PATH;
-  // !Call your microservice API handler of on start event
+  // !Calling  microservice API handler of on start event
   let url;
   if (basePath === '') {
     url = `${process.env.INTERNAL_API_URL}/${process.env.BASE_PATH}webHook`;
   } else {
     url = `${process.env.INTERNAL_API_URL}/${process.env.BASE_PATH}/webHook`;
   }
-  console.log('url is -------', url, startEvent);
-  console.log('internal api header token ------------', process.env.INTERNAL_API_HEADER_TOKEN);
+
+  logger.info(
+    `Url got hit ----------${JSON.stringify(url)} with internal api header token ${
+      process.env.INTERNAL_API_HEADER_TOKEN
+    }`
+  );
   await axios.post(url, startEvent, {
     headers: {
       'Content-Type': 'application/json',
@@ -82,7 +84,7 @@ const startGame = async () => {
 
   usersAtFirst = addDummyUsers(totalUser, 0, 1, isFirstCount);
 
-  console.log('users at first are ---------------', usersAtFirst.length);
+  logger.info(`Number of users at starting are ----------${usersAtFirst.length}`);
 
   // publish the message of dummy user
   const onStartPushUserEvent = {
@@ -101,7 +103,7 @@ const startGame = async () => {
       ping += 1;
       multiplier = calculateMultiplier(Date.now());
 
-      console.log('multiplier now -----------------', multiplier, randomNumber);
+      //  console.log('multiplier now -----------------', multiplier, randomNumber);
 
       if (multiplier + 0.1 <= randomNumber) {
         // finding all the user who cashed out ------------- // ! How are we handling there win  for the users who cashout -----
@@ -109,21 +111,20 @@ const startGame = async () => {
           cashOutUsers = await getCashoutAllUsers(gameCount, multiplier, isFirstCount);
         }, 0); // why the delay of 0
       }
-
       // sending the user who are present in the end
       if (multiplier >= randomNumber) {
-        console.log(' Plane got crashed ------------------------------------');
+        logger.info(`Plane got crashed --------------siuuuuuuuuu-------------`);
         let onCrashEvent = {
           e: 'OnCrash',
           f: randomNumber.toFixed(2).toString(),
           ts: Date.now().toString(),
-          l: (gameCount + 1).toString(), // ! creating issue
+          l: (gameCount + 1).toString(), // need to send gameCount + 1 for ws
         };
         // !Publishing the msg of on crash
+        logger.info(`Publishing the event of on crash to ws --to--${JSON.stringify(channel)}---`);
         redis.publish(channel, JSON.stringify(onCrashEvent));
 
         //! Publishing the data of cashout user
-
         if (cashOutUsers) {
           let cashOutUsersEvent = {
             e: 'CashOutUsers',
@@ -137,7 +138,6 @@ const startGame = async () => {
         }
 
         // ! call microservice api for win
-
         axios.post(
           url,
           { e: 'OnCrash', ts: Date.now().toString(), l: gameCount.toString(), m: multiplier },
@@ -149,7 +149,8 @@ const startGame = async () => {
           }
         );
 
-        redis.rpush(`${redisDb}:Multiplier`, randomNumber);
+        updateMultiplier(randomNumber);
+        // redis.rpush(`${redisDb}:Multiplier`, randomNumber);
         redis.hset(`${redisDb}:Game`, 'Count', gameCount + 1, 'isGameRunning', false);
 
         gameCount += 1;
@@ -189,7 +190,8 @@ const startGame = async () => {
         }, 1500);
       }
     } catch (error) {
-      console.log('error in set Interval---', error);
+      logger.info(`Error came in setting the interval ----${JSON.stringify(error)}----`);
+      throw error;
     }
   }, 100);
 
@@ -198,6 +200,7 @@ const startGame = async () => {
 
 // Only for spin top
 function sendReady(seconds) {
+  logger.info(`Spin top is running -----------`);
   setTimeout(async () => {
     await redis.publish(
       `${process.env.REDIS_DB_NAME}-pubsub`,
@@ -208,7 +211,7 @@ function sendReady(seconds) {
 
 function startNewGameIn(seconds) {
   // Launch the start game function after fixed interval -------
-  console.log('gameplay is started again and again after ----------------', seconds);
+  logger.info(`Game going to start again in ${seconds} seconds..........`);
   setTimeout(startGame, seconds * 1000);
 }
 

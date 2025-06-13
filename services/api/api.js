@@ -2,7 +2,7 @@ const axios = require('axios');
 // const { startCron } = require('./cron');
 const { saveToPending } = require('./controllers/pendingController');
 const { startCron } = require('./cron');
-const retries = 1;
+const retries = process.env.MAX_RETRIES || 3;
 const postReq = async (
   player,
   data,
@@ -14,16 +14,11 @@ const postReq = async (
 ) => {
   logger.info(`Calling ${requestType} api:::::::::::::::::::::::::::::::::::::::::`);
 
-  console.log('player is ----------', player);
-  console.log('data is ----------', data);
   let headers = {
     'Content-Type': 'application/json',
     'X-Hub-Consumer': player.consumerId,
   };
-  console.log('headers -------------', headers);
   let url = process.env.API_BASE_URL + requestType;
-
-  console.log('url is -------------', url);
   try {
     // if (requestType === 'win') {
     //   let error = {
@@ -36,10 +31,12 @@ const postReq = async (
     //   };
     //   throw error;
     // }
+
     let response = await axios.post(url, data, { headers, timeout });
     return response.data;
   } catch (error) {
-    console.log('----------error is -------', error);
+    logger.info(`Error is-------${error}`);
+
     if (error?.response?.data?.code === 'invalid.session.key') {
       let finalError = {
         status: error?.response?.data?.code,

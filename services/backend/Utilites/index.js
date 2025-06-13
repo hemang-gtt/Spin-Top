@@ -89,7 +89,7 @@ const getOnStartAllUsers = async (gameCount, randomNumber, isFirstCount) => {
 };
 
 const getCashoutAllUsers = async (gameCount, randomNumber, isFirstCount) => {
-  let userCahsOut = await redis.hgetall(`${redisDB}:room-${gameCount}-cashout`);
+  let userCahsOut = await redis.hgetall(`${redisDB}:{room-${gameCount}}-cashout`);
   const UserCahsOut = removeDuplicateUser(userCahsOut);
   let updated = [];
   if (UserCahsOut.length !== null) {
@@ -111,4 +111,14 @@ const getCashoutAllUsers = async (gameCount, randomNumber, isFirstCount) => {
   return { TotalUsers: updatedTU };
 };
 
-module.exports = { getCashoutAllUsers, getOnStartAllUsers, addDummyUsers };
+const updateMultiplier = async (randomNumber) => {
+  const listLength = await redis.llen(`${redisDB}:Multiplier`);
+
+  if (listLength >= 30) {
+    await redis.lpop(`${redisDB}:Multiplier`); // Remove oldest value (leftmost)
+  }
+
+  await redis.rpush(`${redisDB}:Multiplier`, randomNumber); // Add new value at the end (right)
+};
+
+module.exports = { getCashoutAllUsers, getOnStartAllUsers, addDummyUsers, updateMultiplier };

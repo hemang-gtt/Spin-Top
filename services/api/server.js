@@ -14,5 +14,5 @@ const DbName = process.env.DbName;
 getDatabaseConnection(DbName);
 
 server.listen(port, () => {
-  logger.info(`Hello--------${port}--`);
+  logger.info(`Hello----listening  on the----${port}--`);
 });

@@ -1,5 +1,6 @@
 const express = require('express');
 const app = express();
+const cors = require('cors');
 const helmet = require('helmet');
 
 app.use((req, res, next) => {
@@ -9,6 +10,25 @@ app.use((req, res, next) => {
   res.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   next();
 });
+
+// CORS handled
+const whitelist = [
+  'http://192.168.2.195:5501',
+  'https://gametimetec.com',
+  'https://games.gttcasino.com',
+  'https://gttcasino.com',
+];
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (whitelist.indexOf(origin) !== -1 || !origin) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+};
+
+app.use(cors(corsOptions));
 
 app.use(helmet);
 

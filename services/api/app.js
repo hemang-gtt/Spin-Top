@@ -18,6 +18,7 @@ const { saveAtStart, saveAtCrash } = require('./controllers/gameController');
 const { betRequest } = require('./controllers/betController');
 const { winRequest } = require('./controllers/winController');
 const { startCron } = require('./cron');
+const logger = require('../utils/logger');
 const app = express();
 
 app.use((req, res, next) => {
@@ -59,14 +60,13 @@ app.post(`${basePath}/game/launch`, async (req, res, next) => {
     const { consumerId, sessionToken } = value;
     let player = { consumerId };
     let data = { sessionToken };
-    console.log('player is ----------------', player);
-    console.log('data is -----------------', data);
-
+    logger.info(`Player is -----${JSON.stringify(player)} and data is --------${JSON.stringify(data)}`);
     const playerInfo = await postReq(player, data, 'playerInfo', '');
-    console.log('player info is -----------------', playerInfo);
 
+    logger.info(`Player info is -----${JSON.stringify(playerInfo)}`);
     let response = await gameLaunch(value, playerInfo);
-    console.log('game launch done -------------');
+
+    logger.info(`Response is ---------${JSON.stringify(response)}`);
     apiLog(`res: GAME_LAUNCH, data: ${JSON.stringify(response)}`);
     const params = new URLSearchParams(response.url.split('?')[1]);
     const userId = params.get('userId');
@@ -76,13 +76,12 @@ app.post(`${basePath}/game/launch`, async (req, res, next) => {
       return res.status(response.errorCode).json(response);
     }
 
-    console.log('userId is ------------', userId);
-    console.log('params are -------', params);
+    logger.info(`User id and params are -------${userId} and params are -----${params}`);
     // ! need to ask why wallet balance here ----
 
     return res.status(200).json({ response });
   } catch (error) {
-    console.log('error is ---------------', error);
+    logger.info(`Error is ----------${JSON.stringify(error)}`);
     const axiosError = error?.response ? error : error?.error; // handles nested errors
     const errorData = axiosError?.response?.data;
     if (errorData) {
@@ -98,8 +97,6 @@ app.post(`${basePath}/game/launch`, async (req, res, next) => {
 
 app.post(`${basePath}/api/getBalance`, async (req, res) => {
   try {
-    console.log('base path is --------===> ', basePath);
-    console.log('finding the balance is --------------------');
     const authHeader = req.headers['authorization'];
     if (authHeader) {
       const token = authHeader.split(' ')[1];
@@ -110,15 +107,17 @@ app.post(`${basePath}/api/getBalance`, async (req, res) => {
       return res.status(401).send('Not Authorized!');
     }
 
-    console.log('data coming is ----------', req.body);
+    logger.info(`data coming in request body is --------${JSON.stringify(req.body)}`);
 
     let userId = req?.body?.userId;
     const tokenData = jwt.decode(req?.body?.token);
-    console.log('token data is -----------', tokenData);
+
+    logger.info(`Token data fetched ----${JSON.stringify(tokenData, null, 4)}`);
     let consumerId = tokenData.providerName;
 
     const balance = await getWalletBalance(userId, consumerId);
-    console.log('line 105 is ---------', balance);
+
+    logger.info(`Balance is -----------${balance}`);
 
     return res.send(balance);
   } catch (error) {
@@ -130,7 +129,6 @@ app.post(`${basePath}/api/getBalance`, async (req, res) => {
 
 app.post(`${basePath}/api/webHook`, (req, res) => {
   try {
-    console.log(`I got hit ---------web hook got hit -----`);
     const authHeader = req.headers['authorization'];
     if (authHeader) {
       const token = authHeader.split(' ')[1];
@@ -142,13 +140,11 @@ app.post(`${basePath}/api/webHook`, (req, res) => {
     }
 
     let data = req.body;
-    console.log('data is -----', data);
     const event = data.e;
     const gameCount = data.l;
     const timestamp = data.ts;
 
-    console.log('event is ----------', event);
-    console.log('game COunt is ------', gameCount);
+    logger.info(`Web hook api got called ---------event is -------${JSON.stringify(event)}`);
 
     if (event && event === 'OnStart') {
       OnStart(gameCount, timestamp);
@@ -163,9 +159,8 @@ app.post(`${basePath}/api/webHook`, (req, res) => {
 });
 
 async function OnStart(gameCount, startTime) {
-  console.log('game count is ------------', gameCount);
-  console.log('time stamp -------', startTime);
-  console.log('api key is -----', `${redisDb}:{room-${gameCount}}`);
+  logger.info(`Game count is-----${gameCount} and started at ${startTime} `);
+  logger.info('api key is -----', `${redisDb}:{room-${gameCount}}`);
 
   let userBets = await redis.hgetall(`${redisDb}:{room-${gameCount}}`);
 
@@ -173,7 +168,8 @@ async function OnStart(gameCount, startTime) {
   //   '6842d5dfb72dc3d18592ff08_9wdUW1749711251': '{"a":5,"api":"PENDING"}',
   //   '6842d5dfb72dc3d18592ff08_XKoa1749711252': '{"a":5,"api":"PENDING"}',
   // };
-  console.log('user bets are ------', userBets);
+
+  logger.info(`User bets are --------${JSON.stringify(userBets)}`);
   let users = await redis.hgetall(`${redisDb}:{room-${gameCount}}-player`);
 
   let clientId;
@@ -186,8 +182,6 @@ async function OnStart(gameCount, startTime) {
       try {
         const playerId = key.split('_')[0];
         const betId = key.split('_')[1];
-        console.log('player id is -------', playerId);
-        console.log('bet id is -------', betId);
         // const client Id = key.split();
 
         const playerInstance = await Player(`${process.env.DbName}-${process.env.CONSUMER_ID}`);
@@ -195,16 +189,15 @@ async function OnStart(gameCount, startTime) {
         if (!player) continue;
 
         let bet = JSON.parse(userBets[key]);
-        console.log('bet is ---------', bet);
+        logger.info(`Bet is -----------${JSON.stringify(bet)}`);
         let transactionId = 'T' + getRandomNumber(16);
         let betSavedData = await betRequest(transactionId, betId, player, bet, playerId, gameCount);
 
-        console.log('bet saved data is ---------', betSavedData);
-        // betAPI(player, bet, betId, playerId, gameCount);
+        logger.info(`Data saved in bet Model is ----------${betSavedData}`);
 
         betCount += parseFloat(bet.a);
       } catch (error) {
-        console.log('something went wrong OnStart with userId: ' + key + ', game: ' + gameCount);
+        logger.info(`something went wrong OnStart with userId: ${key} + ', game: ' + ${gameCount}`);
         console.log(error);
       }
     }
@@ -217,19 +210,39 @@ async function OnStart(gameCount, startTime) {
     gameId = savedGame.id; // ! need to ask why ?
   }
 }
+
 async function Cashouts(gameCount, endTime, multiplier) {
-  console.log('cashout is --------happened -----');
-  console.log('hi -------------', multiplier);
+  handleCashouts(gameCount, endTime, multiplier, true);
+
+  let countToProcessWin = process.env.REDIS_WINSETTLEMENT_COUNT;
+
+  // 1. Get all keys matching the pattern
+  const pattern = `${redisDb}:{room-*`;
+  const keys = await redis.keys(pattern);
+
+  logger.info(`Keys are -----------${JSON.stringify(keys)}`);
+
+  let remainingWinData = keys.map((str) => str.split('{room-')[1].split('}')[0]).filter((item) => item !== gameCount);
+  const remainingGameCount = remainingWinData.slice(0, countToProcessWin);
+
+  for (const count of remainingGameCount) {
+    // console.log('COUNT :> ', count)
+    handleCashouts(count);
+  }
+}
+
+async function handleCashouts(gameCount, endTime, multiplier, baseCase = false) {
+  logger.info(`Cashout Event happened ::::::::::::::::::::::`);
   const roomHash = `{room-${gameCount}}`;
   const betKey = `${redisDb}:${roomHash}`;
-  console.log('redis key is -----', betKey);
   console.log(`${redisDb}:{room-${gameCount}}-cashout`);
 
   let userWins = await redis.hgetall(`${redisDb}:{room-${gameCount}}-cashout`);
   let userBets = await redis.hgetall(`${redisDb}:{room-${gameCount}}`);
 
-  console.log('users are -----------', userBets);
-  console.log('user wins are ------------', userWins);
+  logger.info(`Users are -----------${JSON.stringify(userBets)}`);
+
+  logger.info(`User wins are ---------------${JSON.stringify(userWins)}`);
 
   let winCount = 0;
   let clientId;
@@ -237,34 +250,27 @@ async function Cashouts(gameCount, endTime, multiplier) {
     if (userWins.hasOwnProperty(key) && userBets.hasOwnProperty(key)) {
       const betObj = JSON.parse(userBets[key]);
       const winData = JSON.parse(userWins[key]);
-      console.log('bet obje is --------', betObj, winData);
-
-      console.log('win data is --------', winData);
       clientId = winData.operatorId;
       if (betObj.api === 'SUCCESS') {
         try {
           const userId = key.split('_')[0];
           const gameId = key.split('_')[1];
 
-          console.log('user id ------and game id----', userId, gameId);
+          logger.info(`User id -----------${userId}-------gameID is --${gameId}`);
           const playerInstance = await Player(`${process.env.DbName}-${process.env.CONSUMER_ID}`);
           let player = await playerInstance.findById(userId).lean();
 
           if (!player) continue;
 
-          console.log('player is -----------', player);
-
           let winObj = JSON.parse(userWins[key]);
           let finalMultiplier = Math.floor(parseFloat(winObj.f) * 100);
           let betAmount = Math.floor(parseFloat(winObj.b) * 100);
           let winAmount = (betAmount * finalMultiplier) / 100 / 100;
-
-          console.log('win object is --------', winObj, finalMultiplier, betAmount, winAmount);
           let transactionId = 'T' + getRandomNumber(16);
 
           await winRequest(transactionId, player, winAmount, gameId, winObj, key, gameCount);
 
-          winCount += winAmount;
+          if (baseCase === true) winCount += winAmount;
         } catch (error) {
           console.log('something went wrong OnCashout with userId: ' + key + ', game: ' + gameCount);
           console.log(error);
@@ -272,9 +278,10 @@ async function Cashouts(gameCount, endTime, multiplier) {
       }
     }
   }
-
-  await saveAtCrash(gameId, endTime, winCount, multiplier);
-  gameId = '';
+  if (baseCase === true) {
+    await saveAtCrash(gameId, endTime, winCount, multiplier);
+    gameId = '';
+  }
 
   deleteAllRedisKeysOfGame(gameCount);
   deleteAllRedisKeysWithApiSuccess(gameCount);
